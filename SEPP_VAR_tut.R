@@ -138,3 +138,38 @@ df |>
 
 
 
+
+
+
+
+# Fit individual and pooled graphical VAR on entire data set ---------------------------------
+
+# Recycle bin from mlVAR_tut
+# Individual GVAR networks
+individualGVAR <- list()
+for(i in 1:nPerson){
+  individualGVAR[[i]] <- graphicalVAR(Data[Data$id==i,], 
+                                      nLambda=10, vars=varnames)
+}
+
+# Temporal and contemporaneous effects of participant 1
+qgraph(individualGVAR[[1]]$PDC, layout="circle", theme="colorblind", labels=varnames)
+qgraph(individualGVAR[[1]]$PCC, layout="circle", theme="colorblind", labels=varnames)
+
+
+# Pooled graphical LASSO
+wp_cen <- list()
+for(i in 1:nPerson){
+  wp_cen[[i]] <- apply(Data[Data$id==i, -(nVar+1)], 2, scale)
+}
+wp_cen <- do.call(rbind, wp_cen) |> as.data.frame()
+names(wp_cen) <- varnames
+wp_cen$id <- rep(1:nPerson, each=nTime)
+
+pooledGVAR <- graphicalVAR(wp_cen[, -(nVar+1)], nLambda=20)
+pooledGVAR$PDC |> qgraph(layout="circle", theme="colorblind", labels=varnames,
+                         title="Pooled GVAR PDC")
+pooledGVAR$PCC |> qgraph(layout="circle", theme="colorblind", labels=varnames,
+                         title="Pooled GVAR PCC")
+
+
