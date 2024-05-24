@@ -33,15 +33,15 @@ colnames(data_full_imp) <- c("ID", "exerc", "binge", "bodycheck", "compens", "de
 
 
 # All ED symptom vars
-vars1 <-  c("exerc", "binge", "bodycheck", "compens", "deserve",
-            "diet", "feargain", "guilty", "overeat", "restrict", 
-            "thinner", "vomit", "weigh")
-
-mod1 <- mlVAR(data_full_imp, vars=vars1, idvar="ID", lags=1, dayvar="day", beepvar="time_point",
-             estimator="lmer", temporal="orthogonal", contemporaneous="orthogonal")
-
-
-plot(mod1, "temporal", title="mlvar")
+# vars1 <-  c("exerc", "binge", "bodycheck", "compens", "deserve",
+#             "diet", "feargain", "guilty", "overeat", "restrict", 
+#             "thinner", "vomit", "weigh")
+# 
+# mod1 <- mlVAR(data_full_imp, vars=vars1, idvar="ID", lags=1, dayvar="day", beepvar="time_point",
+#              estimator="lmer", temporal="orthogonal", contemporaneous="orthogonal")
+# 
+# 
+# plot(mod1, "temporal", title="mlvar")
 
 # For visual demonstration purposes, retain variables that have direct connections to exerc. 
 # Note that choices of node in/exclusion affect edge estimates,
@@ -50,39 +50,82 @@ plot(mod1, "temporal", title="mlvar")
 vars2 <- c("exerc", "guilty", "feargain", "bodycheck", "weigh", "restrict")
 
 mod2 <- mlVAR(data_full_imp, vars=vars2, idvar="ID", lags=1, dayvar="day", beepvar="time_point",
-              estimator="lmer", temporal="orthogonal", contemporaneous="orthogonal")
+              estimator="lmer", temporal="correlated", contemporaneous="correlated")
 
-# Retrieve weighted adjacency matrix from estimated beta matrix.
+plot(mod2, "temporal", title="temporal network", layout="circle")
+plot(mod2, "contemporaneous", title="contemporaneous network", layout="circle")
+# Retrieve weighted adjacency matrix from estimated beta matrix to plot directed networks.
 # Note that the beta matrix must be transposed when plotting directed networks, as per convention
 # (rows = node of origin, columns = destination )
-wadjmat <- mod2$results$Beta$mean |> as.data.frame() |> as.matrix() |> t()
+Beta <- mod2$results$Beta$mean |> as.data.frame() |> as.matrix() |> t()
 # Set non-significant edges to 0
-p_mat <- mod2$results$Beta$P |> as.data.frame() |> as.matrix() |> t()
+p_mat_Beta <- mod2$results$Beta$P |> as.data.frame() |> as.matrix() |> t()
 
 for(i in 1:length(vars2)){
   for(j in 1:length(vars2)){
-    wadjmat[i,j] <- ifelse(p_mat[i,j] < 0.05, wadjmat[i,j], 0)
+    Beta[i,j] <- ifelse(p_mat_Beta[i,j] < 0.05, Beta[i,j], 0)
   }
-  
 }
 
-# remove self-loops for clear plotting
-diag(wadjmat) <- 0
-qgraph(wadjmat, labels=vars2, title="qgraph", theme="colorblind", layout="circle")
+# Remove self-loops for clearer plotting
+diag(Beta) <- 0
 
 
-# Individual subjects
-# In multilevel estimation, individual-level estimates are shrunk towards fixed-effects
-# Pull out 4 random subjects
-set.seed(123)
-random_subjects <- sample(1:length(unique(data_full_imp$ID)), 4)
+# Retreive contemporaneous network Kappa
+Kappa <- plot(mod2, "contemporaneous", nonsig="hide", DoNotPlot=T)
+Kappa <- Kappa$Arguments$input
 
-par(mfrow=c(2,2))
-for(i in 1:length(random_subjects)){
-  plot(mod2, "temporal", theme="colorblind", layout="circle",
-       subject=random_subjects[i],
-       title=paste("Individual estimation of subject",random_subjects[i]))
+# Inverting Kappa and flipping the signs of the off-diagonal elements obtains the variance-covariance matrix of the residuals, Theta 
+Theta <- solve(Kappa)
+Theta <- -Theta
+diag(Theta) <- 1
+
+
+# use Beta and Theta from estimated network as "true" data generating parameters to simulate data from
+nPerson <- 100
+nTime <- 200
+nVar <- length(vars2)
+# Initialize empty data frames for innovations (dynamic errors)
+U <- list()
+for(i in 1:nPerson){
+  U[[i]] <- matrix(0, nrow=nTime, ncol=nVar)
 }
+
+# Simulate innovations from multivariate Gaussian distribution with covariance matrix Theta (encodes contemporaneous relations)
+for(i in 1:nPerson){
+  U[[i]] <- MASS::mvrnorm(n=nTime, mu=rep(0, nVar), Sigma=Theta)
+}
+
+# Create person specific data frames in a list
+Data <- list()
+for(i in 1:nPerson){
+  Data[[i]] <- matrix(0, nTime, nVar)
+  Data[[i]][1, ] <- U[[i]][1, ] # Initialize first row
+}
+
+# Lagged effects corresponding to Beta matrix
+for(i in 1:nPerson){
+  for (t in 2:nTime){ 
+    Data[[i]][t, ] <- Data[[i]][t-1,] %*% Beta + U[[i]][t, ]
+  } 
+}
+
+# Unlist and add id variable
+Data <- do.call(rbind, Data) |> as.data.frame()
+names(Data) <- vars2
+Data$id <- rep(1:nPerson, each=nTime)
+
+
+mod3 <- mlVAR(Data, vars=vars2,
+              idvar = "id", 
+              estimator = "lmer", # two-step multilevel VAR
+              scale=T, # grand-mean centered and scaled
+              contemporaneous = "correlated",
+              temporal="correlated") # correlated random-effects, works well with < 8 variables
+
+
+plot(mod3, "temporal", layout="circle")
+plot(mod3, "contemporaneous", layout="circle")
 
 
 

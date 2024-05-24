@@ -1,0 +1,232 @@
+---
+title: "Final Paper: Using a Bayesian Approach to Compare Gaussian Graphical Models"
+author: "Christopher Huong"
+date: "2024-05-08"
+output: 
+  html_document:
+    toc: true
+    collapse: false
+    toc_depth: 3
+    toc_float: true
+    
+bibliography: finalpaper.bib
+csl: apa.csl
+---
+
+
+
+## Introduction
+
+
+The use of graphical models in psychopathology research has exploded in recent years [@robinaugh2020network]. The key idea motivating their use is that covariance among symptoms of psychopathology can be explained by their direct causal interactions, rather than a latent common cause [@borsboom2008psychometric; @borsboom2017network]. Thus, graphical models are routinely estimated and visualized on psychological data from instruments to assess the structure (e.g., of conditional in/dependencies) of psychopathology symptoms (e.g., the Beck Depression Inventory) from this network perspective. 
+
+<br>
+
+The most popular of these models is the Gaussian Graphical Model (GGM), which represents the probabilistic pairwise dependencies among observed variables (assuming a multivariate Gaussian distribution), conditioning on all other variables in the model. The GGM is also known as a partial correlation network and typically uses L1 regularization to estimate a sparse network [@epskamp2018tutorial].
+
+<br>
+
+An increasing question of interest is how symptom networks compare across groups, such as diagnosed vs healthy control, or before and after treatment. One hypothesis is that mental disorder networks, such as depression, may feature stronger symptom-symptom connections (reflected in larger magnitudes of partial correlations) which perpetuate high symptom activation via feedback loops [@cramer2016major]. Various methods have been developed to detect differences in network features across groups, such as the network comparison test [@van2022comparing] and moderated network models [@haslbeck2021moderated], which both use frequentist null hypothesis significance testing to detect non-zero differences. For the purpose of this assignment, I will demonstrate the application of a Bayesian approach developed by Williams et al [-@williams2020comparing] to compare the global network structure between two groups using a posterior predictive check.
+
+
+<br>
+
+
+## Methods
+
+
+To test for global differences between networks, Williams et al [-@williams2020comparing] propose a test based on a posterior predictive check to test whether two networks were generated from different multivariate Gaussian distributions. They use the Kullback-Leibler (KL) divergence metric to measure and compare the distance between the posterior predictive networks of two groups conditional on the data, with the KL divergence from a model that assumes the two groups are from identical underlying distributions.
+
+<br>
+
+
+The GGM is encoded in the inverse of the variance-covariance matrix $\Sigma ^{-1}$ and is obtained by flipping the signs and standardizing the off-diagnonal elements. $\Sigma$ is assumed to be multivariate Gaussian distributed, and its inverse (the precision matrix $\Theta$) will be the target of estimation from the data conditional on the groups being equal, i.e., $\Theta_{1}$ = $\Theta_{2}$, to produce a posterior distribution. We sample from this posterior distribution to obtain a posterior predictive distribution, i.e. expected observations assuming group equality, and compare this against our actual observed data using a test statistic based on the KL divergence.
+
+
+The posterior predictive distribution for the univariate case is formulated as follows: 
+
+
+<br> 
+
+
+
+$P(Y^{rep} \mid M, y)$ = $\int_{ }^{ }$ $P(Y^{rep} \mid M, theta)$ $P(theta \mid M, Y) d\theta$
+
+
+<br>
+
+
+Where $Y^{rep}$ is the sampled observations, $Y$ are the observed data, $M$ is the fitted model, and $\theta$ are the estimated parameters.
+
+
+<br>
+
+In the multivariate case:
+
+<br>
+
+$P(\Theta \mid Y^{obs}_{1}, Y^{obs}_{2}, M_{0})$
+
+<br>
+
+or the probability distribution of the precision matrix $\Theta$ conditional on the observed data and the fitted model assuming group equality of $\Theta$ as the true distribution.
+
+<br>
+
+
+A Wishart distribution for $\Theta$ is used for the prior, which I believe is an uninformative prior for symmetrical matrices (of which variance-covariance matrices are). 
+
+<br>
+
+The test statistic is then computed by comparing the Jensen-Shannon divergence of $E${ $\Theta_{g1} \mid Y_{g1}$} and $E${ $\Theta_{g2} \mid Y_{g2}$}, and is interpreted as the distribution of relative entropy expected given group equality.
+
+<br>
+
+These distributions are then used to compute the predictive *p* value, simplified as 
+
+<br>
+
+p = $P(T(Y^{rep}) > T(y^{obs}) \mid M, Y)$
+
+<br>
+
+Note there are a bunch of other details the authors include such as using a normalized precision matrix for the predictive check, a nodewise predictive check, and details of the formulation of the test statistic.
+
+<br>
+
+
+This method is implemented in the *BGGM* package. I will work from a simulated example because this is a skill I want to practice. I will include all code chunks in the text for reproducibility.
+
+
+
+```{r, warning=F, message=F}
+library(bootnet)
+library(qgraph)
+library(MASS)
+library(BGGM)
+```
+
+<br>
+
+Simulate 2 random GGMs (for each treatment group *tx*).
+
+```{r}
+nVar=5
+nSample = 300
+set.seed(123)
+tx <- rbinom(n=nSample, size=1, p=0.5)
+GGM_0 <- genGGM(nVar, p=0.5, propPositive=0.5)
+GGM_1 <- genGGM(nVar, p=0.5, propPositive=0.5)
+
+```
+<br>
+
+To simulate multivariate Gaussian distributed data, get variance-covariance matrix $\Sigma$ from the GGM by setting diagonal elements=1, reversing the signs of the off-diagonals, taking the inverse, and standardizing.
+
+```{r}
+Sigma0 <- solve(diag(ncol(GGM_0)) - GGM_0) |> cov2cor()
+Sigma1 <- solve(diag(ncol(GGM_1)) - GGM_1) |> cov2cor()
+```
+<br>
+
+Check if covariance matrix is positive semi definite
+
+```{r}
+eigen(Sigma0)$values >= 0
+eigen(Sigma0)$values >= 0
+```
+<br>
+
+Simulate data for control and treatment groups
+
+```{r}
+set.seed(123)
+data_0 <- mvrnorm(n=nSample, mu=rep(0, nVar), Sigma=Sigma0) |>
+  cbind(rep(0, nSample))
+
+data_1 <- mvrnorm(n=nSample, mu=rep(0, nVar), Sigma=Sigma1) |>
+  cbind(rep(1, nSample))
+
+data <- rbind(data_0, data_1) |> as.data.frame()
+
+```
+
+<br>
+
+Visually inspect for differences by estimating GGM on all data, and GGMs for each condition using lasso regularization with lambda selected by minimizing the EBIC, with hyperparameter gamma set to 0.5.
+
+```{r, warning=F, message=F}
+ggm_fit_0 <- estimateNetwork(data=data[data$V6==0, 1:nVar], default="EBICglasso", tuning=0.5)
+ggm_fit_1 <- estimateNetwork(data=data[data$V6==1, 1:nVar], default="EBICglasso", tuning=0.5)
+ggm_list <- list(ggm_0=ggm_fit_0, ggm_1=ggm_fit_1)
+
+```
+<br>
+
+Plot
+
+```{r}
+par(mfrow=c(2,1))
+for(v in 1:2){
+  qgraph(ggm_list[[v]]$graph, title=names(ggm_list[v]))
+}
+```
+
+<br>
+
+They sure look different. Now formally test for differences.
+
+```{r, message=F}
+t <- ggm_compare_ppc(data_0[, 1:nVar], data_1[, 1:nVar],
+                     test="global",
+                     iter=100)
+```
+<br>
+
+
+## Results
+
+Posterior predictive p-value:
+
+```{r}
+t$ppp_jsd
+```
+A posterior predictive p-value of 0, based on the Jensen-Shannon divergence (JSD), indicates that the JSD distributions do not overlap, and thus are reliabily difference. This means that the posterior predictive predictions conditional on the model of group equality is different from the actual data.
+
+<br>
+
+We can plot the predictive distributions, where the red shaded area indicates the critical region (p=0.5) and observed JSD (black dot) assuming group equality.
+```{r, warning=F, message=F}
+p <- plot(t)
+p$plot_jsd
+```
+
+
+
+<br>
+
+## Discussion
+
+In this paper I demonstrate a Bayesian approach to comparing GGMs using a posterior predictive check proposed by Williams et al. [-@williams2020comparing] on a simulated example. 
+
+<br>
+
+## References
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

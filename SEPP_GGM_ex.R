@@ -116,7 +116,15 @@ bootnet()
 
 
 # Network Comparison Test -------------------------------------------------
+library(BGGM)
 
+t <- ggm_compare_ppc(stretch_sim, cycle_sim,
+                     test="global",
+                     iter=500)
+
+t$ppp_jsd
+p <- plot(t)
+p$plot_jsd
 
 
 # Moderated network -------------------------------------------------------
