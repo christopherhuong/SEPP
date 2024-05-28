@@ -34,7 +34,7 @@ colnames(data_full_imp) <- c("ID", "exerc", "binge", "bodycheck", "compens", "de
 
 # All ED symptom vars
 # vars1 <-  c("exerc", "binge", "bodycheck", "compens", "deserve",
-#             "diet", "feargain", "guilty", "overeat", "restrict", 
+#             "diet", "feargain", "guilty", "overeat", "restrict",
 #             "thinner", "vomit", "weigh")
 # 
 # mod1 <- mlVAR(data_full_imp, vars=vars1, idvar="ID", lags=1, dayvar="day", beepvar="time_point",
@@ -49,11 +49,17 @@ colnames(data_full_imp) <- c("ID", "exerc", "binge", "bodycheck", "compens", "de
 
 vars2 <- c("exerc", "guilty", "feargain", "bodycheck", "weigh", "restrict")
 
-mod2 <- mlVAR(data_full_imp, vars=vars2, idvar="ID", lags=1, dayvar="day", beepvar="time_point",
-              estimator="lmer", temporal="correlated", contemporaneous="correlated")
+mod2 <- mlVAR(data_full_imp, vars=vars2,
+              idvar="ID", #specify ID variable
+              dayvar="day", #specify dat variable
+              beepvar="time_point", #specify beep variable, to not regress last response of t-1 on first response of t
+              lags=1, #predict t from t-1
+              estimator="lmer", #multilevel VAR
+              temporal="orthogonal", #defaults to estimate non-correlated random effects for > 5 variables
+              contemporaneous="correlated")
 
-plot(mod2, "temporal", title="temporal network", layout="circle")
-plot(mod2, "contemporaneous", title="contemporaneous network", layout="circle")
+plot(mod2, "temporal", layout="circle", labels=vars2, theme="colorblind", title="Group-level temporal network with autoregressive loops")
+
 # Retrieve weighted adjacency matrix from estimated beta matrix to plot directed networks.
 # Note that the beta matrix must be transposed when plotting directed networks, as per convention
 # (rows = node of origin, columns = destination )
@@ -67,81 +73,15 @@ for(i in 1:length(vars2)){
   }
 }
 
-# Remove self-loops for clearer plotting
+# Remove autoregressive effects (self-loops) for clearer plotting
 diag(Beta) <- 0
 
-
-# Retreive contemporaneous network Kappa
-Kappa <- plot(mod2, "contemporaneous", nonsig="hide", DoNotPlot=T)
-Kappa <- Kappa$Arguments$input
-
-# Inverting Kappa and flipping the signs of the off-diagonal elements obtains the variance-covariance matrix of the residuals, Theta 
-Theta <- solve(Kappa)
-Theta <- -Theta
-diag(Theta) <- 1
-
-
-# use Beta and Theta from estimated network as "true" data generating parameters to simulate data from
-nPerson <- 100
-nTime <- 200
-nVar <- length(vars2)
-# Initialize empty data frames for innovations (dynamic errors)
-U <- list()
-for(i in 1:nPerson){
-  U[[i]] <- matrix(0, nrow=nTime, ncol=nVar)
-}
-
-# Simulate innovations from multivariate Gaussian distribution with covariance matrix Theta (encodes contemporaneous relations)
-for(i in 1:nPerson){
-  U[[i]] <- MASS::mvrnorm(n=nTime, mu=rep(0, nVar), Sigma=Theta)
-}
-
-# Create person specific data frames in a list
-Data <- list()
-for(i in 1:nPerson){
-  Data[[i]] <- matrix(0, nTime, nVar)
-  Data[[i]][1, ] <- U[[i]][1, ] # Initialize first row
-}
-
-# Lagged effects corresponding to Beta matrix
-for(i in 1:nPerson){
-  for (t in 2:nTime){ 
-    Data[[i]][t, ] <- Data[[i]][t-1,] %*% Beta + U[[i]][t, ]
-  } 
-}
-
-# Unlist and add id variable
-Data <- do.call(rbind, Data) |> as.data.frame()
-names(Data) <- vars2
-Data$id <- rep(1:nPerson, each=nTime)
-
-
-mod3 <- mlVAR(Data, vars=vars2,
-              idvar = "id", 
-              estimator = "lmer", # two-step multilevel VAR
-              scale=T, # grand-mean centered and scaled
-              contemporaneous = "correlated",
-              temporal="correlated") # correlated random-effects, works well with < 8 variables
-
-
-plot(mod3, "temporal", layout="circle")
-plot(mod3, "contemporaneous", layout="circle")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Figure 3 ----------------------------------------------------------------
+pdf(file="mlvar_networks.pdf", width=8, height=4)
+par(mfrow=c(1,2))
+qgraph(Beta, layout="circle", labels=vars2, theme="colorblind", title="A) Group-level temporal network")
+plot(mod2, "contemporaneous", layout="circle", labels=vars2, theme="colorblind", title="B) Group-level contemporaneous network")
+dev.off()
 
 
 
