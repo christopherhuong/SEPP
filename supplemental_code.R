@@ -89,8 +89,8 @@ B <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.2, probKappaPositive = 0.5,
 
 # Simulate multivariate normal data from the beta matrix of lagged effects, and kappa matrix of contemporaneous effects
 A_data <- graphicalVARsim(nTime=100,
-                          beta = A$beta,
-                          kappa = A$kappa)
+                          beta = A$beta, # Beta matrix
+                          kappa = A$kappa) # Kappa matrix
 
 B_data <- graphicalVARsim(nTime=100, 
                           beta = B$beta, 
@@ -98,8 +98,8 @@ B_data <- graphicalVARsim(nTime=100,
 
 # Fit a graphical VAR model on each persons data
 A_GVAR <- graphicalVAR(A_data, 
-                       nLambda=50,
-                       gamma=0.5)
+                       nLambda=50, 
+                       gamma=0.5) # Tuning parameter to control level of sparsity.
 
 B_GVAR <- graphicalVAR(B_data, 
                        nLambda=50, 
