@@ -8,8 +8,6 @@ library(gridExtra)
 
 
 # glasso regularized GGM networks from cross-sectional data --------------------------
-setwd("G:/My Drive/INCH Projects/[2023] SEPP Special Issue/datacode")
-
 
 # Load in data
 stretch <- read.csv('StretchingGroupData.csv')
@@ -81,18 +79,19 @@ n_var <- 4
 vars <- c("PA", "depr", "conc", "tired")
 
 # Simulate two random networks
-set.seed(2024)
-A <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.5, probKappaPositive = 0.5,
-                     probBetaEdge = 0.3, probBetaPositive = 0.5)
-B <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.5, probKappaPositive = 0.5,
-                          probBetaEdge = 0.3, probBetaPositive = 0.5)
+set.seed(321)
+A <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.2, probKappaPositive = 0.5,
+                     probBetaEdge = 0.3, probBetaPositive = 0.3)
+B <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.2, probKappaPositive = 0.5,
+                     probBetaEdge = 0.3, probBetaPositive = 0.3)
 
-A_data <- graphicalVARsim(nTime=200,
+
+A_data <- graphicalVARsim(nTime=100,
                           beta = A$beta,
                           kappa = A$kappa)
 
-B_data <- graphicalVARsim(nTime=200,
-                          beta = B$beta,
+B_data <- graphicalVARsim(nTime=100, 
+                          beta = B$beta, 
                           kappa = B$kappa)
 
 
@@ -101,13 +100,17 @@ A_GVAR <- graphicalVAR(A_data,
                        gamma=0.5)
 
 B_GVAR <- graphicalVAR(B_data, 
-                       nLambda=50,
+                       nLambda=50, 
                        gamma=0.5)
 
 
-plot(A_GVAR, "PDC", layout="circle")
-plot(B_GVAR, "PDC", layout="circle")
-
+pdf(file="Fig_2.pdf", width=14, height=6)
+par(mfrow=c(1, 2))
+qgraph(A_GVAR$PDC, layout="circle", theme="colorblind", labels=vars, title="A) Personalized network for individual A")
+qgraph(B_GVAR$PDC, layout="circle", theme="colorblind", labels=vars, title="B) Personalized network for individual B")
+qgraph(A_GVAR$PCC, layout="circle", theme="colorblind", labels=vars, title="C) Contemporaneous network for individual A")
+qgraph(B_GVAR$PCC, layout="circle", theme="colorblind", labels=vars, title="D) Contemporaneous network for individual B")
+dev.off()
 
 
 
