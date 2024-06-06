@@ -80,12 +80,14 @@ vars <- c("PA", "depr", "conc", "tired")
 
 # Simulate two random networks
 set.seed(321)
+
+# Randomly generate a "true" underlying temporal and contemporaneous network structure for each individual
 A <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.2, probKappaPositive = 0.5,
                      probBetaEdge = 0.3, probBetaPositive = 0.3)
 B <- randomGVARmodel(Nvar = n_var, probKappaEdge = 0.2, probKappaPositive = 0.5,
                      probBetaEdge = 0.3, probBetaPositive = 0.3)
 
-
+# Simulate multivariate normal data from the beta matrix of lagged effects, and kappa matrix of contemporaneous effects
 A_data <- graphicalVARsim(nTime=100,
                           beta = A$beta,
                           kappa = A$kappa)
@@ -94,7 +96,7 @@ B_data <- graphicalVARsim(nTime=100,
                           beta = B$beta, 
                           kappa = B$kappa)
 
-
+# Fit a graphical VAR model on each persons data
 A_GVAR <- graphicalVAR(A_data, 
                        nLambda=50,
                        gamma=0.5)
@@ -103,7 +105,8 @@ B_GVAR <- graphicalVAR(B_data,
                        nLambda=50, 
                        gamma=0.5)
 
-
+# Plot the model estimates
+# Figure 2 ------------------------------------------------------------------
 pdf(file="Fig_2.pdf", width=14, height=6)
 par(mfrow=c(1, 2))
 qgraph(A_GVAR$PDC, layout="circle", theme="colorblind", labels=vars, title="A) Personalized network for individual A")
